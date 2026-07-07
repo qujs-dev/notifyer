@@ -1,5 +1,5 @@
 ﻿/*!
- * Notifyer (Multiple-Class version)
+ * Notifyer v1.0.3
  * Notification component
  *
  * @author Serge Galich <gaserge@mail.ru>
@@ -10,15 +10,15 @@
  * @requires Qu
  */
 
-(function(global) {
+(function (window, document) {
     'use strict';
     
     const LIB_NAME = 'Notifyer';
     const DATA_PREFIX = 'qu-notifyer';
     const QU_PREFIX = 'qu';
 
-    if (global.Qu && global.Qu[LIB_NAME]) {
-        global.Qu.debug(`⚠️ [${LIB_NAME}] Already registered, skipping duplicate`);
+    if (window.Qu && window.Qu[LIB_NAME]) {
+        window.Qu.debug(`⚠️ [${LIB_NAME}] Already registered, skipping duplicate`);
         return;
     }
     
@@ -128,11 +128,11 @@
     };
 
     Constructor.extend = function () {
-        if (Array.isArray(global[LIB_NAME + 'Extend'])) {
-          global[LIB_NAME + 'Extend'].forEach((fn) => {
+        if (Array.isArray(window[LIB_NAME + 'Extend'])) {
+          window[LIB_NAME + 'Extend'].forEach((fn) => {
             Constructor.use(fn);
           });
-          global[LIB_NAME + 'Extend'] = [];
+          window[LIB_NAME + 'Extend'] = [];
         }
     };
 
@@ -643,11 +643,11 @@
     };
 
 
-    if (global.Qu) {
-        global.Qu.lib(LIB_NAME, Constructor);
+    if (window.Qu) {
+        window.Qu.lib(LIB_NAME, Constructor);
     } else {
-        global._QuLibs = global._QuLibs || [];
-        global._QuLibs.push({ name: LIB_NAME, instance: Constructor });
+        window._QuLibs = window._QuLibs || [];
+        window._QuLibs.push({ name: LIB_NAME, instance: Constructor });
     }
 
-})(typeof window !== 'undefined' ? window : global);
+})(window, document);
