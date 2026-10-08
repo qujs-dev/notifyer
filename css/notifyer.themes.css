@@ -1,4 +1,4 @@
-﻿.notifyer__el.theme-success {
+.notifyer__el.theme-success {
     background: linear-gradient(135deg, #10b981 0%, #34d399 50%, #10b981 100%);
     background-size: 200% 200%;
     animation: gradient-shift 3s ease infinite;

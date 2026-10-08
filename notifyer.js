@@ -1,4 +1,4 @@
-﻿/*!
+/*!
  * Notifyer v1.0.3
  * Notification component
  *
