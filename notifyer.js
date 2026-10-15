@@ -1,5 +1,5 @@
 /*!
- * Notifyer v1.0.3
+ * Notifyer v1.0.5
  * Notification component
  *
  * @author Serge Galich <gaserge@mail.ru>
@@ -34,8 +34,8 @@
         maxNotifications: 5,
         showCloseAllButton: false,
         closeAllThreshold: 2, 
-        animationOpen: 'slide-down',
-        animationClose: 'fade',
+        animationOpen: 'slideDown',
+        animationClose: 'slideUp',
         animationDuration: 300,
         template: null,
         clickToClose: false, 
