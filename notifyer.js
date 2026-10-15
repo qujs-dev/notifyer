@@ -1,5 +1,5 @@
 /*!
- * Notifyer v1.0.5
+ * Notifyer v1.0.6
  * Notification component
  *
  * @author Serge Galich <gaserge@mail.ru>
@@ -36,7 +36,7 @@
         closeAllThreshold: 2, 
         animationOpen: 'slideDown',
         animationClose: 'slideUp',
-        animationDuration: 300,
+        animationDuration: null,
         template: null,
         clickToClose: false, 
         
@@ -80,6 +80,26 @@
 
     Constructor._removeData = function(el, name, prefix = DATA_PREFIX) {
         el.removeAttribute(`data-${prefix}-${name}`);
+    };
+    
+    Constructor._onAnimationEnd = function(el, callback, fallbackMs) {
+        let done = false;
+        let timer = null;
+    
+        const finish = (e) => {
+            if (done) return;
+            if (e && e.target !== el) return;
+            done = true;
+            el.removeEventListener('animationend', finish);
+            el.removeEventListener('transitionend', finish);
+            clearTimeout(timer);
+            callback();
+        };
+    
+        el.addEventListener('animationend', finish);
+        el.addEventListener('transitionend', finish);
+    
+        timer = setTimeout(() => finish(null), fallbackMs || 1000);
     };
 
     Constructor._Qu = {
@@ -209,38 +229,30 @@
 
     Constructor.closeAll = function(layer = 'all') {
         const prefix = _defaultConfig.cssPrefix;
-        const duration = _defaultConfig.animationDuration;
-        
-        if (layer === 'all') {
-            document.querySelectorAll(`.${prefix}__el`).forEach(el => {
-                Constructor._removeData(el, 'opening', QU_PREFIX);
-                Constructor._setData(el, 'closing', '', QU_PREFIX);
-                setTimeout(() => {
-                    if (el.close) el.close();
-                    el.remove();
-                }, duration);
+    
+        const processEl = (el) => {
+            Constructor._removeData(el, 'opening', QU_PREFIX);
+            Constructor._setData(el, 'closing', '', QU_PREFIX);
+            Constructor._onAnimationEnd(el, () => {
+                if (el.close) el.close();
+                el.remove();
             });
+        };
+    
+        if (layer === 'all') {
+            document.querySelectorAll(`.${prefix}__wrapper`).forEach(processEl);
         } else {
-            const container = layer === 'global' 
+            const container = layer === 'global'
                 ? document.querySelector(`.${prefix}-global`)
                 : document.querySelector(`#${prefix}-for-${layer}`);
-                
             if (container) {
-                container.querySelectorAll(`.${prefix}__el`).forEach(el => {
-                    Constructor._removeData(el, 'opening', QU_PREFIX);
-                    Constructor._setData(el, 'closing', '', QU_PREFIX);
-                    setTimeout(() => {
-                        if (el.close) el.close();
-                        el.remove();
-                    }, duration);
-                });
+                container.querySelectorAll(`.${prefix}__wrapper`).forEach(processEl);
             }
         }
     };
 
     Constructor.transferFromDialog = function(dialog) {
         const prefix = _defaultConfig.cssPrefix;
-        const duration = _defaultConfig.animationDuration;
         
         const openDialogs = Array.from(document.querySelectorAll('dialog[open]')).filter(d => d.open);
         const dialogIndex = openDialogs.findIndex(d => d === dialog);
@@ -276,16 +288,17 @@
                 targetPosition = positionMatch[1];
             }
             
-            const notifications = container.querySelectorAll(`.${prefix}__el`);
+            const notifications = container.querySelectorAll(`.${prefix}__wrapper`);
             if (!notifications.length) return;
-            
+
             notifications.forEach(notification => {
+                const inner = notification.querySelector(`.${prefix}__el`);
                 const params = {
-                    title: notification.querySelector(`.${prefix}__caption`)?.textContent || '',
-                    text: notification.querySelector(`.${prefix}__text`)?.textContent || '',
-                    className: Array.from(notification.classList)
-                        .filter(cls => cls !== `${prefix}__el` && !cls.startsWith(`${prefix}__el--`))
-                        .join(' '),
+                    title: inner?.querySelector(`.${prefix}__caption`)?.textContent || '',
+                    text:  inner?.querySelector(`.${prefix}__text`)?.textContent || '',
+                    className: inner ? Array.from(inner.classList)
+                        .filter(cls => cls !== `${prefix}__el`)
+                        .join(' ') : '',
                     position: targetPosition.replace('_', '-'),
                     layer: targetLayer === 'global' ? 'global' : targetLayer.id || undefined,
                     autohide: Constructor._getData(notification, 'autohide') !== 'false',
@@ -332,7 +345,6 @@
             this.$el = null;
             this.container = null;
             this.config = config;
-            this._animationDuration = config.animationDuration;
             
             this.domCreate();
             this.showNotification();
@@ -347,72 +359,83 @@
             this._limitNotifications();
             this._updateCloseAllButton();
         },
-
         _createNotificationElement: function() {
             const prefix = this.config.cssPrefix;
-            
-            let el = document.createElement('dialog');
-            Constructor._setData(el, 'notifyer', 'true', QU_PREFIX);
-            Constructor._setData(el, 'autohide', this.config.autohide);
-            Constructor._setData(el, 'timeout', this.config.timeout);
-            Constructor._setData(el, 'position', this.config.position);
-            Constructor._setData(el, 'layer', this.config.layer || 'auto');
-            Constructor._setData(el, 'click-to-close', this.config.clickToClose);
+        
+            // ===== Wrapper (dialog) — несёт анимацию появления и позицию =====
+            const wrapper = document.createElement('dialog');
+        
+            Constructor._setData(wrapper, 'notifyer', 'true', QU_PREFIX);
+            Constructor._setData(wrapper, 'autohide', this.config.autohide);
+            Constructor._setData(wrapper, 'timeout', this.config.timeout);
+            Constructor._setData(wrapper, 'position', this.config.position);
+            Constructor._setData(wrapper, 'layer', this.config.layer || 'auto');
+            Constructor._setData(wrapper, 'click-to-close', this.config.clickToClose);
+        
+            wrapper.classList.add(`${prefix}__wrapper`);
+            wrapper.classList.add(`${prefix}__wrapper--${this.config.position.replace('-', '_')}`);
+        
+            Constructor._setData(wrapper, 'animation-open', this.config.animationOpen, QU_PREFIX);
+            Constructor._setData(wrapper, 'animation-close', this.config.animationClose, QU_PREFIX);
 
+            if (this.config.animationDuration != null) {
+                wrapper.style.setProperty('--qu-transition-duration', `${this.config.animationDuration}ms`);
+            }
+        
+            // ===== Inner (.notifyer__el) — визуал, темы, контент =====
+            const inner = document.createElement('div');
+            inner.classList.add(`${prefix}__el`);
+        
+            if (this.config.className) {
+                this.config.className.split(' ').forEach(cl => {
+                    if (cl) inner.classList.add(cl);
+                });
+            }
+        
+            // ===== HTML =====
+            let html = this.config.template;
+        
+            if (html === null) {
+                html = `{title}{text}<button class="${prefix}__close" type="button" aria-label="${this.config.lexicon.close}"></button>`;
+                const htmlTitle = this.config.title ? `<div class="${prefix}__caption"></div>` : '';
+                const htmlText  = this.config.text  ? `<div class="${prefix}__text"></div>`    : '';
+                html = html.replace('{title}', htmlTitle).replace('{text}', htmlText);
+            }
+        
+            inner.innerHTML = html;
+        
+            if (this.config.title) {
+                const cap = inner.querySelector(`.${prefix}__caption`);
+                if (cap) cap.innerHTML = this.config.title;
+            }
+            if (this.config.text) {
+                const txt = inner.querySelector(`.${prefix}__text`);
+                if (txt) txt.innerHTML = this.config.text;
+            }
+        
+            wrapper.appendChild(inner);
+            this.$el = wrapper;
+        
+            // ===== Events =====
             if (!this.config.modal) {
-                Constructor._Qu.on('keydown', el, (e) => {
+                Constructor._Qu.on('keydown', wrapper, (e) => {
                     if (e.key === 'Escape') {
                         e.stopPropagation();
                         this.hide();
                     }
                 });
             }
-
-            el.classList.add(`${prefix}__el`);
-            el.classList.add(`${prefix}__el--${this.config.position.replace('-', '_')}`);
-            
-            Constructor._setData(el, 'animation-open', this.config.animationOpen, QU_PREFIX);
-            Constructor._setData(el, 'animation-close', this.config.animationClose, QU_PREFIX);
-            
-            el.style.setProperty('--qu-transition-duration', `${this.config.animationDuration}ms`);
-            
-            if (this.config.className) {
-                let classes = this.config.className.split(" ");
-                classes.forEach(cl => {
-                    el.classList.add(cl);
-                });
-            }
-
-            let html = this.config.template;
-
-            if (html === null) {
-                html = `{title}{text}<button class="${prefix}__close" type="button" aria-label="${this.config.lexicon.close}"></button>`;
-                let htmlTitle = this.config.title ? `<div class="${prefix}__caption"></div>` : '';
-                let htmlText = this.config.text ? `<div class="${prefix}__text"></div>` : '';
-                html = html.replace('{title}', htmlTitle).replace('{text}', htmlText);
-            }
-            
-            el.innerHTML = html;
-
-            if (this.config.title) {
-                el.querySelector(`.${prefix}__caption`).innerHTML = this.config.title;
-            }
-            if (this.config.text) {
-                el.querySelector(`.${prefix}__text`).innerHTML = this.config.text;
-            }
-
-            this.$el = el;
-
-            const closeBtn = this.$el.querySelector(`.${prefix}__close`);
+        
+            const closeBtn = inner.querySelector(`.${prefix}__close`);
             if (closeBtn) {
                 Constructor._Qu.on('click', closeBtn, (e) => {
                     e.stopPropagation();
                     this.hide();
                 });
             }
-
+        
             if (this.config.clickToClose) {
-                Constructor._Qu.on('click', this.$el, (e) => {
+                Constructor._Qu.on('click', wrapper, () => {
                     this.hide();
                 });
             }
@@ -503,7 +526,7 @@
 
         _limitNotifications: function() {
             const prefix = this.config.cssPrefix;
-            const notifications = this.container.querySelectorAll(`.${prefix}__el`);
+            const notifications = this.container.querySelectorAll(`.${prefix}__wrapper`);
             const max = this.config.maxNotifications;
             
             if (notifications.length > max) {
@@ -511,11 +534,11 @@
                 toRemove.forEach(notification => {
                     Constructor._removeData(notification, 'opening', QU_PREFIX);
                     Constructor._setData(notification, 'closing', '', QU_PREFIX);
-                    setTimeout(() => {
+                    Constructor._onAnimationEnd(notification, () => {
                         if (notification.close) notification.close();
                         notification.remove();
                         this._updateCloseAllButton();
-                    }, this._animationDuration);
+                    });
                 });
             }
         }, 
@@ -523,7 +546,7 @@
         _updateCloseAllButton: function() {
             if (!this.container) return;
             const prefix = this.config.cssPrefix;
-            const notifications = this.container.querySelectorAll(`.${prefix}__el`);
+            const notifications = this.container.querySelectorAll(`.${prefix}__wrapper`);
             const closeAllBtn = this.container.querySelector(`.${prefix}__close-all`);
         
             const showCloseAll = this.config.showCloseAllButton;
@@ -545,7 +568,10 @@
                 btn.innerHTML = this.config.lexicon.closeAll;
                 Constructor._setData(btn, 'animation-open', this.config.animationOpen, QU_PREFIX);
                 Constructor._setData(btn, 'animation-close', this.config.animationClose, QU_PREFIX);
-                btn.style.setProperty('--qu-transition-duration', `${this.config.animationDuration}ms`);
+
+                if (this.config.animationDuration != null) {
+                    btn.style.setProperty('--qu-transition-duration', `${this.config.animationDuration}ms`);
+                }
                 
                 setTimeout(() => {
                     btn.classList.add(`${prefix}__close-all--visible`);
@@ -554,23 +580,19 @@
                 Constructor._Qu.on('click', btn, (e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    const duration = this.config.animationDuration;
                     
-                    this.container.querySelectorAll(`.${prefix}__el`).forEach(el => {
+                    this.container.querySelectorAll(`.${prefix}__wrapper`).forEach(el => {
                         Constructor._removeData(el, 'opening', QU_PREFIX);
                         Constructor._setData(el, 'closing', '', QU_PREFIX);
-                        setTimeout(() => {
+                        Constructor._onAnimationEnd(el, () => {
                             if (el.close) el.close();
                             el.remove();
-                        }, this._animationDuration);
+                        });
                     });
-                    
-                    btn.classList.add('notifyer__close-all--removeing');
-                    setTimeout(() => {
-                        if (btn.parentElement) {
-                            btn.remove();
-                        }
-                    }, duration);
+
+                    Constructor._onAnimationEnd(btn, () => {
+                        if (btn.parentElement) btn.remove();
+                    });
                 });
                 
                 this.container.appendChild(btn);
@@ -581,11 +603,10 @@
                 Constructor._removeData(closeAllBtn, 'opening', QU_PREFIX);
                 Constructor._setData(closeAllBtn, 'closing', '', QU_PREFIX);
                 closeAllBtn.classList.remove(`${prefix}__close-all--visible`);
-                setTimeout(() => {
-                    if (closeAllBtn.parentElement) {
-                        closeAllBtn.remove();
-                    }
-                }, this._animationDuration);
+            
+                Constructor._onAnimationEnd(closeAllBtn, () => {
+                    if (closeAllBtn.parentElement) closeAllBtn.remove();
+                });
             }
         },
 
@@ -607,20 +628,16 @@
 
         hide: function() {
             if (!this.$el) return;
-            
-            Constructor._removeData(this.$el, 'opening', QU_PREFIX);
-            Constructor._setData(this.$el, 'closing', '', QU_PREFIX);
-            
-            setTimeout(() => {
-                if (this.$el.parentElement) {
-                    this.$el.remove();
-                }
+            const el = this.$el;
+        
+            Constructor._removeData(el, 'opening', QU_PREFIX);
+            Constructor._setData(el, 'closing', '', QU_PREFIX);
+        
+            Constructor._onAnimationEnd(el, () => {
+                if (el.parentElement) el.remove();
                 this.$el = null;
-                
-                if (this.container) {
-                    this._updateCloseAllButton();
-                }
-            }, this._animationDuration);
+                if (this.container) this._updateCloseAllButton();
+            });
         },
 
         setAnimation: function(animationOpen, animationClose = null) {
